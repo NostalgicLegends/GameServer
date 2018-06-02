@@ -85,12 +85,13 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         {
             if (HasEmptyScript) return false;
 
-            var stats = Owner.GetStats();
-            if ((SpellData.ManaCost[Level] * (1 - stats.getSpellCostReduction())) >= stats.CurrentMana || 
+            if (SpellData.ManaCost[Level] * (1 - Owner.Stats.PercentSpellCostReduction) >= Owner.Stats.CurrentPar ||
                 state != SpellState.STATE_READY)
+            {
                 return false;
+            }
 
-            stats.CurrentMana = stats.CurrentMana - SpellData.ManaCost[Level] * (1 - stats.getSpellCostReduction());
+            Owner.Stats.CurrentPar -= SpellData.ManaCost[Level] * (1 - Owner.Stats.PercentSpellCostReduction);
             X = x;
             Y = y;
             X2 = x2;
@@ -320,7 +321,7 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             }
             if (Slot < 4)
             {
-                Owner.GetStats().ManaCost[Slot] = SpellData.ManaCost[Level];
+                Owner.Stats.ManaCost[Slot] = SpellData.ManaCost[Level];
             }
         }
 

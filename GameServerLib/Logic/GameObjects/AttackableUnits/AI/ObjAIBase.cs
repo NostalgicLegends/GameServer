@@ -5,6 +5,7 @@ using System.Numerics;
 using LeagueSandbox.GameServer.Logic.API;
 using LeagueSandbox.GameServer.Logic.Content;
 using LeagueSandbox.GameServer.Logic.GameObjects.AttackableUnits;
+using LeagueSandbox.GameServer.Logic.GameObjects.Stats;
 using LeagueSandbox.GameServer.Logic.Items;
 using LeagueSandbox.GameServer.Logic.Scripting.CSharp;
 
@@ -20,7 +21,6 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         private List<UnitCrowdControl> crowdControlList = new List<UnitCrowdControl>();
         protected ItemManager _itemManager = Program.ResolveDependency<ItemManager>();
         protected CSharpScriptEngine _scriptEngine = Program.ResolveDependency<CSharpScriptEngine>();
-
 
         /// <summary>
         /// Unit we want to attack as soon as in range
@@ -43,12 +43,11 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         public bool IsMelee { get; set; }
         private Random random = new Random();
 
-        public ObjAIBase(string model, Stats stats, int collisionRadius = 40,
+        public ObjAIBase(string model, int collisionRadius = 40,
             float x = 0, float y = 0, int visionRadius = 0, uint netId = 0) :
-            base(model, stats, collisionRadius, x, y, visionRadius, netId)
+            base(model, collisionRadius, x, y, visionRadius, netId)
         {
             CharData = _game.Config.ContentManager.GetCharData(Model);
-            Stats.LoadStats(CharData);
 
             if (CharData.PathfindingCollisionRadius > 0)
             {
@@ -62,8 +61,6 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             {
                 CollisionRadius = 40;
             }
-            Stats.CurrentMana = stats.ManaPoints.Total;
-            Stats.CurrentHealth = stats.HealthPoints.Total;
             if (!string.IsNullOrEmpty(model))
             {
                 AASpellData = _game.Config.ContentManager.GetSpellData(model + "BasicAttack");
@@ -91,18 +88,19 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
                 RemoveBuffGameScriptsWithName(buffNamespace, buffClass);
             }
 
-            var buffController = 
-                new BuffGameScriptController(this, buffNamespace, buffClass, ownerSpell, duration: removeAfter);
+            var buffController = new BuffGameScriptController(this, buffNamespace, buffClass, ownerSpell, removeAfter);
             BuffGameScriptControllers.Add(buffController);
             buffController.ActivateBuff();
 
             return buffController;
         }
+
         public void RemoveBuffGameScript(BuffGameScriptController buffController)
         {
             buffController.DeactivateBuff();
             BuffGameScriptControllers.Remove(buffController);
         }
+
         public bool HasBuffGameScriptActive(string buffNamespace, string buffClass)
         {
             foreach (var b in BuffGameScriptControllers)
@@ -111,6 +109,7 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             }
             return false;
         }
+
         public void RemoveBuffGameScriptsWithName(string buffNamespace, string buffClass)
         {
             foreach (var b in BuffGameScriptControllers)
@@ -131,7 +130,9 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             lock (BuffsLock)
             {
                 foreach (var buff in Buffs)
+                {
                     toReturn.Add(buff.Key, buff.Value);
+                }
 
                 return toReturn;
             }
@@ -148,24 +149,12 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             lock (BuffsLock)
             {
                 if (Buffs.ContainsKey(name))
+                {
                     return Buffs[name];
+                }
+
                 return null;
             }
-        }
-
-        public void AddStatModifier(ChampionStatModifier statModifier)
-        {
-            Stats.AddModifier(statModifier);
-        }
-
-        public void UpdateStatModifier(ChampionStatModifier statModifier)
-        {
-            Stats.UpdateModifier(statModifier);
-        }
-
-        public void RemoveStatModifier(ChampionStatModifier statModifier)
-        {
-            Stats.RemoveModifier(statModifier);
         }
 
         public void AddBuff(Buff b)
@@ -193,7 +182,9 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         public void RemoveBuff(string b)
         {
             lock (BuffsLock)
+            {
                 Buffs.Remove(b);
+            }
         }
         
         public byte GetNewBuffSlot(Buff b)
@@ -213,18 +204,21 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         {
             if (cc.IsTypeOf(CrowdControlType.Stun) || cc.IsTypeOf(CrowdControlType.Root))
             {
-                this.StopMovement();
+                StopMovement();
             }
             crowdControlList.Add(cc);
         }
+
         public void RemoveCrowdControl(UnitCrowdControl cc)
         {
             crowdControlList.Remove(cc);
         }
+
         public void ClearAllCrowdControl()
         {
             crowdControlList.Clear();
         }
+
         public bool HasCrowdControl(CrowdControlType ccType)
         {
             return crowdControlList.FirstOrDefault((cc) => cc.IsTypeOf(ccType)) != null;
@@ -232,15 +226,17 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
 
         public void StopMovement()
         {
-            this.SetWaypoints(new List<Vector2> { this.GetPosition(), this.GetPosition() });
+            SetWaypoints(new List<Vector2> { GetPosition(), GetPosition() });
         }
 
         public virtual void refreshWaypoints()
         {
-            if (TargetUnit == null || (GetDistanceTo(TargetUnit) <= Stats.Range.Total && Waypoints.Count == 1))
+            if (TargetUnit == null || (GetDistanceTo(TargetUnit) <= Stats.TotalAttackRange && Waypoints.Count == 1))
+            {
                 return;
+            }
 
-            if (GetDistanceTo(TargetUnit) <= Stats.Range.Total - 2.0f)
+            if (GetDistanceTo(TargetUnit) <= Stats.TotalAttackRange - 2.0f)
             {
                 SetWaypoints(new List<Vector2> { new Vector2(X, Y) });
             }
@@ -365,10 +361,10 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
                 return;
             }
 
-            var damage = Stats.AttackDamage.Total;
+            var damage = Stats.TotalAttackDamage;
             if (_isNextAutoCrit)
             {
-                damage *= Stats.getCritDamagePct();
+                damage *= Stats.TotalCriticalDamage;
             }
 
             var onAutoAttack = _scriptEngine.GetStaticMethod<Action<AttackableUnit, AttackableUnit>>(Model, "Passive", "OnAutoAttack");
@@ -412,7 +408,7 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
                 else if (IsAttacking && AutoAttackTarget != null)
                 {
                     _autoAttackCurrentDelay += diff / 1000.0f;
-                    if (_autoAttackCurrentDelay >= AutoAttackDelay / Stats.AttackSpeedMultiplier.Total)
+                    if (_autoAttackCurrentDelay >= AutoAttackDelay / Stats.PercentAttackSpeedMod)
                     {
                         if (!IsMelee)
                         {
@@ -435,15 +431,15 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
                         {
                             AutoAttackHit(AutoAttackTarget);
                         }
-                        _autoAttackCurrentCooldown = 1.0f / (Stats.GetTotalAttackSpeed());
+                        _autoAttackCurrentCooldown = 1.0f / Stats.TotalAttackSpeed;
                         IsAttacking = false;
                     }
 
                 }
-                else if (GetDistanceTo(TargetUnit) <= Stats.Range.Total)
+                else if (GetDistanceTo(TargetUnit) <= Stats.TotalAttackRange)
                 {
                     refreshWaypoints();
-                    _isNextAutoCrit = random.Next(0, 100) < Stats.CriticalChance.Total * 100;
+                    _isNextAutoCrit = random.Next(0, 100) < Stats.CriticalChance * 100;
                     if (_autoAttackCurrentCooldown <= 0)
                     {
                         IsAttacking = true;
@@ -506,7 +502,7 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
 
         public override void update(float diff)
         {
-            foreach (UnitCrowdControl cc in crowdControlList)
+            foreach (var cc in crowdControlList)
             {
                 cc.Update(diff);
             }
@@ -518,6 +514,7 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             base.update(diff);
             UpdateAutoAttackTarget(diff);
         }
+
         public override void die(AttackableUnit killer)
         {
             var onDie = _scriptEngine.GetStaticMethod<Action<AttackableUnit, AttackableUnit>>(Model, "Passive", "OnDie");

@@ -1,13 +1,14 @@
 ﻿using System;
 using LeagueSandbox.GameServer.Logic.Enet;
 using LeagueSandbox.GameServer.Logic.GameObjects.AttackableUnits;
+using LeagueSandbox.GameServer.Logic.GameObjects.Stats;
 
 namespace LeagueSandbox.GameServer.Logic.GameObjects
 {
     public class Inhibitor : ObjAnimatedBuilding
     {
         private System.Timers.Timer RespawnTimer;
-        private InhibitorState State;
+        public InhibitorState State { get; private set; }
         private const double RESPAWN_TIMER = 5 * 60 * 1000;
         private const double RESPAWN_ANNOUNCE = 1 * 60 * 1000;
         private const float GOLD_WORTH = 50.0f;
@@ -23,13 +24,12 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             float y = 0,
             int visionRadius = 0,
             uint netId = 0
-        ) : base(model, new BuildingStats(), collisionRadius, x, y, visionRadius, netId)
+        ) : base(model, collisionRadius, x, y, visionRadius, netId)
         {
-            Stats.CurrentHealth = 4000;
-            Stats.HealthPoints.BaseValue = 4000;
             State = InhibitorState.Alive;
             SetTeam(team);
         }
+
         public override void OnAdded()
         {
             base.OnAdded();
@@ -52,24 +52,24 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
                 }
             }
 
-            if (RespawnTimer != null) //?
-                RespawnTimer.Stop();
+            RespawnTimer?.Stop();
 
             RespawnTimer = new System.Timers.Timer(RESPAWN_TIMER) {AutoReset = false};
 
             RespawnTimer.Elapsed += (a, b) =>
             {
-                GetStats().CurrentHealth = GetStats().HealthPoints.Total;
+                Stats.CurrentHealth = Stats.TotalHealth;
                 setState(InhibitorState.Alive);
                 IsDead = false;
             };
             RespawnTimer.Start();
             TimerStartTime = DateTime.Now;
 
-            if (killer != null && killer is Champion)
+            if (killer is Champion c)
             {
-                var c = (Champion)killer;
-                c.GetStats().Gold += GOLD_WORTH;
+                c.Stats.Gold += GOLD_WORTH;
+                c.Stats.TotalGold += GOLD_WORTH;
+
                 _game.PacketNotifier.NotifyAddGold(c, this, GOLD_WORTH);
             }
 
@@ -79,10 +79,20 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
             base.die(killer);
         }
 
+        public override void UpdateReplication()
+        {
+            ReplicationManager.UpdateFloat(Stats.CurrentHealth, 1, 0);
+            ReplicationManager.UpdateBool(Stats.IsInvulnerable, 1, 1);
+            ReplicationManager.UpdateBool(Stats.IsTargetable, 5, 0);
+            ReplicationManager.UpdateUint((uint)Stats.IsTargetableToTeam, 5, 1);
+        }
+
         public void setState(InhibitorState state, GameObject killer = null)
         {
             if (RespawnTimer != null && state == InhibitorState.Alive)
+            {
                 RespawnTimer.Stop();
+            }
 
             State = state;
             _game.PacketNotifier.NotifyInhibitorState(this, killer);
@@ -115,12 +125,6 @@ namespace LeagueSandbox.GameServer.Logic.GameObjects
         {
 
         }
-
-        public override float getMoveSpeed()
-        {
-            return 0;
-        }
-
     }
 
     public enum InhibitorState : byte

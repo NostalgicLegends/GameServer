@@ -28,6 +28,11 @@ namespace LeagueSandbox.GameServer
             return watch.ElapsedTicks * 1000000 / Stopwatch.Frequency;
         }
 
+        public static float WithHardCaps(this float value, float minValue, float maxValue)
+        {
+            return value < minValue ? minValue : Math.Min(value, maxValue);
+        }
+
         public static void Add(this List<byte> list, int val)
         {
             list.AddRange(PacketHelper.intToByteArray(val));
